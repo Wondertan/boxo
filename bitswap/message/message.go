@@ -215,7 +215,7 @@ func newMessageFromProto(pbm pb.Message) (BitSwapMessage, error) {
 
 		c, err := pref.Sum(b.GetData())
 		if err != nil {
-			return nil, err
+			continue
 		}
 
 		blk, err := blocks.NewBlockWithCid(b.GetData(), c)
