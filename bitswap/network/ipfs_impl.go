@@ -42,6 +42,7 @@ func NewFromIpfsHost(host host.Host, r routing.ContentRouting, opts ...NetOpt) B
 	bitswapNetwork := impl{
 		host:    host,
 		routing: r,
+		decoder: s.Decoder,
 
 		protocolBitswapNoVers:  s.ProtocolPrefix + ProtocolBitswapNoVers,
 		protocolBitswapOneZero: s.ProtocolPrefix + ProtocolBitswapOneZero,
@@ -55,7 +56,10 @@ func NewFromIpfsHost(host host.Host, r routing.ContentRouting, opts ...NetOpt) B
 }
 
 func processSettings(opts ...NetOpt) Settings {
-	s := Settings{SupportedProtocols: append([]protocol.ID(nil), internal.DefaultProtocols...)}
+	s := Settings{
+		SupportedProtocols: append([]protocol.ID(nil), internal.DefaultProtocols...),
+		Decoder:            &bsmsg.DefaultDecoder{},
+	}
 	for _, opt := range opts {
 		opt(&s)
 	}
@@ -75,6 +79,7 @@ type impl struct {
 	host          host.Host
 	routing       routing.ContentRouting
 	connectEvtMgr *connectEventManager
+	decoder       bsmsg.Decoder
 
 	protocolBitswapNoVers  protocol.ID
 	protocolBitswapOneZero protocol.ID
@@ -408,7 +413,7 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 
 	reader := msgio.NewVarintReaderSize(s, network.MessageSizeMax)
 	for {
-		received, err := bsmsg.FromMsgReader(reader)
+		received, err := bsnet.decoder.FromMsgReader(reader)
 		if err != nil {
 			if err != io.EOF {
 				_ = s.Reset()

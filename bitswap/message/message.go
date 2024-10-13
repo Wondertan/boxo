@@ -399,7 +399,7 @@ func FromNet(r io.Reader) (BitSwapMessage, error) {
 	return FromMsgReader(reader)
 }
 
-// FromPBReader generates a new Bitswap message from a gogo-protobuf reader
+// FromMsgReader generates a new Bitswap message from a msgio reader
 func FromMsgReader(r msgio.Reader) (BitSwapMessage, error) {
 	msg, err := r.ReadMsg()
 	if err != nil {
