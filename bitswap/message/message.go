@@ -40,6 +40,8 @@ type BitSwapMessage interface {
 	// AddEntry adds an entry to the Wantlist.
 	AddEntry(key cid.Cid, priority int32, wantType pb.Message_Wantlist_WantType, sendDontHave bool) int
 
+	AddCancelEntry(key cid.Cid, priority int32, wantType pb.Message_Wantlist_WantType, sendDontHave bool) int
+
 	// Cancel adds a CANCEL for the given CID to the message
 	// Returns the size of the CANCEL entry in the protobuf
 	Cancel(key cid.Cid) int
@@ -314,6 +316,10 @@ func (m *impl) AddEntry(k cid.Cid, priority int32, wantType pb.Message_Wantlist_
 	return m.addEntry(k, priority, false, wantType, sendDontHave)
 }
 
+func (m *impl) AddCancelEntry(key cid.Cid, priority int32, wantType pb.Message_Wantlist_WantType, sendDontHave bool) int {
+	return m.addEntry(key, priority, true, wantType, sendDontHave)
+}
+
 func (m *impl) addEntry(c cid.Cid, priority int32, cancel bool, wantType pb.Message_Wantlist_WantType, sendDontHave bool) int {
 	e, exists := m.wantlist[c]
 	if exists {
@@ -399,7 +405,7 @@ func FromNet(r io.Reader) (BitSwapMessage, error) {
 	return FromMsgReader(reader)
 }
 
-// FromPBReader generates a new Bitswap message from a gogo-protobuf reader
+// FromMsgReader generates a new Bitswap message from a msgio reader
 func FromMsgReader(r msgio.Reader) (BitSwapMessage, error) {
 	msg, err := r.ReadMsg()
 	if err != nil {
