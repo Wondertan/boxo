@@ -10,32 +10,32 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
-const (
-	// dontHaveTimeout is used to simulate a DONT_HAVE when communicating with
+var (
+	// DontHaveTimeout is used to simulate a DONT_HAVE when communicating with
 	// a peer whose Bitswap client doesn't support the DONT_HAVE response,
 	// or when the peer takes too long to respond.
 	// If the peer doesn't respond to a want-block within the timeout, the
 	// local node assumes that the peer doesn't have the block.
-	dontHaveTimeout = 5 * time.Second
+	DontHaveTimeout = 5 * time.Second
 
-	// maxExpectedWantProcessTime is the maximum amount of time we expect a
+	// MaxExpectedWantProcessTime is the maximum amount of time we expect a
 	// peer takes to process a want and initiate sending a response to us
-	maxExpectedWantProcessTime = 2 * time.Second
+	MaxExpectedWantProcessTime = 2 * time.Second
 
-	// maxTimeout is the maximum allowed timeout, regardless of latency
-	maxTimeout = dontHaveTimeout + maxExpectedWantProcessTime
+	// MaxTimeout is the maximum allowed timeout, regardless of latency
+	MaxTimeout = DontHaveTimeout + MaxExpectedWantProcessTime
 
-	// pingLatencyMultiplier is multiplied by the average ping time to
+	// PingLatencyMultiplier is multiplied by the average ping time to
 	// get an upper bound on how long we expect to wait for a peer's response
 	// to arrive
-	pingLatencyMultiplier = 3
+	PingLatencyMultiplier = 3
 
-	// messageLatencyAlpha is the alpha supplied to the message latency EWMA
-	messageLatencyAlpha = 0.5
+	// MessageLatencyAlpha is the alpha supplied to the message latency EWMA
+	MessageLatencyAlpha = 0.5
 
 	// To give a margin for error, the timeout is calculated as
-	// messageLatencyMultiplier * message latency
-	messageLatencyMultiplier = 2
+	// MessageLatencyMultiplier * message latency
+	MessageLatencyMultiplier = 2
 )
 
 // PeerConnection is a connection to a peer that can be pinged, and the
@@ -93,8 +93,8 @@ type dontHaveTimeoutMgr struct {
 // newDontHaveTimeoutMgr creates a new dontHaveTimeoutMgr
 // onDontHaveTimeout is called when pending keys expire (not cancelled before timeout)
 func newDontHaveTimeoutMgr(pc PeerConnection, onDontHaveTimeout func([]cid.Cid), clock clock.Clock) *dontHaveTimeoutMgr {
-	return newDontHaveTimeoutMgrWithParams(pc, onDontHaveTimeout, dontHaveTimeout, maxTimeout,
-		pingLatencyMultiplier, messageLatencyMultiplier, maxExpectedWantProcessTime, clock, nil)
+	return newDontHaveTimeoutMgrWithParams(pc, onDontHaveTimeout, DontHaveTimeout, MaxTimeout,
+		PingLatencyMultiplier, MessageLatencyMultiplier, MaxExpectedWantProcessTime, clock, nil)
 }
 
 // newDontHaveTimeoutMgrWithParams is used by the tests
@@ -117,7 +117,7 @@ func newDontHaveTimeoutMgrWithParams(
 		peerConn:                   pc,
 		activeWants:                make(map[cid.Cid]*pendingWant),
 		timeout:                    defaultTimeout,
-		messageLatency:             &latencyEwma{alpha: messageLatencyAlpha},
+		messageLatency:             &latencyEwma{alpha: MessageLatencyAlpha},
 		defaultTimeout:             defaultTimeout,
 		maxTimeout:                 maxTimeout,
 		pingLatencyMultiplier:      pingLatencyMultiplier,
