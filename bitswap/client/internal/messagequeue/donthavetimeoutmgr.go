@@ -10,33 +10,42 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
-var (
+func defaultDontHaveTimeoutConfig() *DontHaveTimeoutConfig {
+	cfg := &DontHaveTimeoutConfig{
+		DontHaveTimeout:            5 * time.Second,
+		MaxExpectedWantProcessTime: 2 * time.Second,
+		MaxTimeout:                 7 * time.Second,
+		PingLatencyMultiplier:      3,
+		MessageLatencyAlpha:        0.5,
+		MessageLatencyMultiplier:   2,
+	}
+
+	cfg.MaxTimeout = cfg.DontHaveTimeout + cfg.MaxExpectedWantProcessTime
+	return cfg
+}
+
+type DontHaveTimeoutConfig struct {
 	// DontHaveTimeout is used to simulate a DONT_HAVE when communicating with
 	// a peer whose Bitswap client doesn't support the DONT_HAVE response,
 	// or when the peer takes too long to respond.
 	// If the peer doesn't respond to a want-block within the timeout, the
 	// local node assumes that the peer doesn't have the block.
-	DontHaveTimeout = 5 * time.Second
-
+	DontHaveTimeout time.Duration
 	// MaxExpectedWantProcessTime is the maximum amount of time we expect a
 	// peer takes to process a want and initiate sending a response to us
-	MaxExpectedWantProcessTime = 2 * time.Second
-
+	MaxExpectedWantProcessTime time.Duration
 	// MaxTimeout is the maximum allowed timeout, regardless of latency
-	MaxTimeout = DontHaveTimeout + MaxExpectedWantProcessTime
-
+	MaxTimeout time.Duration
 	// PingLatencyMultiplier is multiplied by the average ping time to
 	// get an upper bound on how long we expect to wait for a peer's response
 	// to arrive
-	PingLatencyMultiplier = 3
-
+	PingLatencyMultiplier int
 	// MessageLatencyAlpha is the alpha supplied to the message latency EWMA
-	MessageLatencyAlpha = 0.5
-
+	MessageLatencyAlpha float64
 	// To give a margin for error, the timeout is calculated as
 	// MessageLatencyMultiplier * message latency
-	MessageLatencyMultiplier = 2
-)
+	MessageLatencyMultiplier int
+}
 
 // PeerConnection is a connection to a peer that can be pinged, and the
 // average latency measured
@@ -61,16 +70,12 @@ type pendingWant struct {
 // we ping the peer to estimate latency. If we receive a response from the
 // peer we use the response latency.
 type dontHaveTimeoutMgr struct {
-	clock                      clock.Clock
-	ctx                        context.Context
-	shutdown                   func()
-	peerConn                   PeerConnection
-	onDontHaveTimeout          func([]cid.Cid)
-	defaultTimeout             time.Duration
-	maxTimeout                 time.Duration
-	pingLatencyMultiplier      int
-	messageLatencyMultiplier   int
-	maxExpectedWantProcessTime time.Duration
+	clock             clock.Clock
+	ctx               context.Context
+	shutdown          func()
+	peerConn          PeerConnection
+	onDontHaveTimeout func([]cid.Cid)
+	config            *DontHaveTimeoutConfig
 
 	// All variables below here must be protected by the lock
 	lk sync.RWMutex
@@ -92,39 +97,33 @@ type dontHaveTimeoutMgr struct {
 
 // newDontHaveTimeoutMgr creates a new dontHaveTimeoutMgr
 // onDontHaveTimeout is called when pending keys expire (not cancelled before timeout)
-func newDontHaveTimeoutMgr(pc PeerConnection, onDontHaveTimeout func([]cid.Cid), clock clock.Clock) *dontHaveTimeoutMgr {
-	return newDontHaveTimeoutMgrWithParams(pc, onDontHaveTimeout, DontHaveTimeout, MaxTimeout,
-		PingLatencyMultiplier, MessageLatencyMultiplier, MaxExpectedWantProcessTime, clock, nil)
+func newDontHaveTimeoutMgr(pc PeerConnection, onDontHaveTimeout func([]cid.Cid), cfg *DontHaveTimeoutConfig, clock clock.Clock) *dontHaveTimeoutMgr {
+	if cfg == nil {
+		cfg = defaultDontHaveTimeoutConfig()
+	}
+	return newDontHaveTimeoutMgrWithParams(pc, onDontHaveTimeout, cfg, clock, nil)
 }
 
 // newDontHaveTimeoutMgrWithParams is used by the tests
 func newDontHaveTimeoutMgrWithParams(
 	pc PeerConnection,
 	onDontHaveTimeout func([]cid.Cid),
-	defaultTimeout time.Duration,
-	maxTimeout time.Duration,
-	pingLatencyMultiplier int,
-	messageLatencyMultiplier int,
-	maxExpectedWantProcessTime time.Duration,
+	cfg *DontHaveTimeoutConfig,
 	clock clock.Clock,
 	timeoutsTriggered chan struct{},
 ) *dontHaveTimeoutMgr {
 	ctx, shutdown := context.WithCancel(context.Background())
 	mqp := &dontHaveTimeoutMgr{
-		clock:                      clock,
-		ctx:                        ctx,
-		shutdown:                   shutdown,
-		peerConn:                   pc,
-		activeWants:                make(map[cid.Cid]*pendingWant),
-		timeout:                    defaultTimeout,
-		messageLatency:             &latencyEwma{alpha: MessageLatencyAlpha},
-		defaultTimeout:             defaultTimeout,
-		maxTimeout:                 maxTimeout,
-		pingLatencyMultiplier:      pingLatencyMultiplier,
-		messageLatencyMultiplier:   messageLatencyMultiplier,
-		maxExpectedWantProcessTime: maxExpectedWantProcessTime,
-		onDontHaveTimeout:          onDontHaveTimeout,
-		timeoutsTriggered:          timeoutsTriggered,
+		clock:             clock,
+		ctx:               ctx,
+		shutdown:          shutdown,
+		peerConn:          pc,
+		activeWants:       make(map[cid.Cid]*pendingWant),
+		timeout:           cfg.DontHaveTimeout,
+		messageLatency:    &latencyEwma{alpha: cfg.MessageLatencyAlpha},
+		onDontHaveTimeout: onDontHaveTimeout,
+		config:            cfg,
+		timeoutsTriggered: timeoutsTriggered,
 	}
 
 	return mqp
@@ -189,7 +188,7 @@ func (dhtm *dontHaveTimeoutMgr) UpdateMessageLatency(elapsed time.Duration) {
 // measurePingLatency measures the latency to the peer by pinging it
 func (dhtm *dontHaveTimeoutMgr) measurePingLatency() {
 	// Wait up to defaultTimeout for a response to the ping
-	ctx, cancel := context.WithTimeout(dhtm.ctx, dhtm.defaultTimeout)
+	ctx, cancel := context.WithTimeout(dhtm.ctx, dhtm.config.DontHaveTimeout)
 	defer cancel()
 
 	// Ping the peer
@@ -360,18 +359,18 @@ func (dhtm *dontHaveTimeoutMgr) calculateTimeoutFromPingLatency(latency time.Dur
 	// The maximum expected time for a response is
 	// the expected time to process the want + (latency * multiplier)
 	// The multiplier is to provide some padding for variable latency.
-	timeout := dhtm.maxExpectedWantProcessTime + time.Duration(dhtm.pingLatencyMultiplier)*latency
-	if timeout > dhtm.maxTimeout {
-		timeout = dhtm.maxTimeout
+	timeout := dhtm.config.MaxExpectedWantProcessTime + time.Duration(dhtm.config.PingLatencyMultiplier)*latency
+	if timeout > dhtm.config.MaxTimeout {
+		timeout = dhtm.config.MaxTimeout
 	}
 	return timeout
 }
 
 // calculateTimeoutFromMessageLatency calculates a timeout derived from message latency
 func (dhtm *dontHaveTimeoutMgr) calculateTimeoutFromMessageLatency() time.Duration {
-	timeout := dhtm.messageLatency.latency * time.Duration(dhtm.messageLatencyMultiplier)
-	if timeout > dhtm.maxTimeout {
-		timeout = dhtm.maxTimeout
+	timeout := dhtm.messageLatency.latency * time.Duration(dhtm.config.MessageLatencyMultiplier)
+	if timeout > dhtm.config.MaxTimeout {
+		timeout = dhtm.config.MaxTimeout
 	}
 	return timeout
 }
