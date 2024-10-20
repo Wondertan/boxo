@@ -217,8 +217,8 @@ type DontHaveTimeoutManager interface {
 // New creates a new MessageQueue.
 func New(ctx context.Context, p peer.ID, network MessageNetwork, onDontHaveTimeout OnDontHaveTimeout,
 	dontHaveTimeoutConfig *DontHaveTimeoutConfig, disableRebroadcast bool) *MessageQueue {
-	onTimeout := func(ks []cid.Cid) {
-		log.Infow("Bitswap: timeout waiting for blocks", "cids", ks, "peer", p)
+	onTimeout := func(ks []cid.Cid, duration time.Duration) {
+		log.Infow("Bitswap: timeout waiting for blocks", "timeout", duration, "cids", ks, "peer", p)
 		onDontHaveTimeout(p, ks)
 	}
 	clock := clock.New()

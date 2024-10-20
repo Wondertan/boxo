@@ -74,7 +74,7 @@ type dontHaveTimeoutMgr struct {
 	ctx               context.Context
 	shutdown          func()
 	peerConn          PeerConnection
-	onDontHaveTimeout func([]cid.Cid)
+	onDontHaveTimeout func([]cid.Cid, time.Duration)
 	config            *DontHaveTimeoutConfig
 
 	// All variables below here must be protected by the lock
@@ -97,7 +97,7 @@ type dontHaveTimeoutMgr struct {
 
 // newDontHaveTimeoutMgr creates a new dontHaveTimeoutMgr
 // onDontHaveTimeout is called when pending keys expire (not cancelled before timeout)
-func newDontHaveTimeoutMgr(pc PeerConnection, onDontHaveTimeout func([]cid.Cid), cfg *DontHaveTimeoutConfig, clock clock.Clock) *dontHaveTimeoutMgr {
+func newDontHaveTimeoutMgr(pc PeerConnection, onDontHaveTimeout func([]cid.Cid, time.Duration), cfg *DontHaveTimeoutConfig, clock clock.Clock) *dontHaveTimeoutMgr {
 	if cfg == nil {
 		cfg = defaultDontHaveTimeoutConfig()
 	}
@@ -107,7 +107,7 @@ func newDontHaveTimeoutMgr(pc PeerConnection, onDontHaveTimeout func([]cid.Cid),
 // newDontHaveTimeoutMgrWithParams is used by the tests
 func newDontHaveTimeoutMgrWithParams(
 	pc PeerConnection,
-	onDontHaveTimeout func([]cid.Cid),
+	onDontHaveTimeout func([]cid.Cid, time.Duration),
 	cfg *DontHaveTimeoutConfig,
 	clock clock.Clock,
 	timeoutsTriggered chan struct{},
@@ -346,7 +346,7 @@ func (dhtm *dontHaveTimeoutMgr) fireTimeout(pending []cid.Cid) {
 	}
 
 	// Fire the timeout
-	dhtm.onDontHaveTimeout(pending)
+	dhtm.onDontHaveTimeout(pending, dhtm.timeout)
 
 	// signal a timeout fired
 	if dhtm.timeoutsTriggered != nil {
