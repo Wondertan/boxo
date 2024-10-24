@@ -149,8 +149,12 @@ func New(
 	notif notifications.PubSub,
 	initialSearchDelay time.Duration,
 	periodicSearchDelay delay.D,
+	broadcastLimit uint64,
 	self peer.ID,
 ) *Session {
+	if broadcastLimit == 0 {
+		broadcastLimit = broadcastLiveWantsLimit
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	s := &Session{
 		sw:                  newSessionWants(broadcastLiveWantsLimit),

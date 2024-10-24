@@ -100,6 +100,12 @@ func WithDisabledMessageQueueRebroadcast(disable bool) Option {
 	}
 }
 
+func WithRebroadcastLimit(limit uint64) Option {
+	return func(bs *Client) {
+		bs.broadcastLimit = limit
+	}
+}
+
 // WithoutDuplicatedBlockStats disable collecting counts of duplicated blocks
 // received. This counter requires triggering a blockstore.Has() call for
 // every block received by launching goroutines in parallel. In the worst case
@@ -168,7 +174,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 		rebroadcastDelay delay.D,
 		self peer.ID,
 	) bssm.Session {
-		return bssession.New(sessctx, sessmgr, id, spm, pqm, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
+		return bssession.New(sessctx, sessmgr, id, spm, pqm, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, bs.broadcastLimit, self)
 	}
 	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {
 		return bsspm.New(id, network.ConnectionManager())
@@ -263,6 +269,8 @@ type Client struct {
 
 	// disable per-peer rebroadacsting of wants in the message queue
 	disableMessageQueueRebroadcast bool
+
+	broadcastLimit uint64
 }
 
 type counters struct {
