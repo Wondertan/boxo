@@ -50,6 +50,7 @@ func NewFromIpfsHost(host host.Host, r routing.ContentRouting, opts ...NetOpt) B
 		protocolBitswap:        s.ProtocolPrefix + ProtocolBitswap,
 
 		supportedProtocols: s.SupportedProtocols,
+		streamReuse:        s.Reuse,
 	}
 
 	return &bitswapNetwork
@@ -58,6 +59,7 @@ func NewFromIpfsHost(host host.Host, r routing.ContentRouting, opts ...NetOpt) B
 func processSettings(opts ...NetOpt) Settings {
 	s := Settings{
 		SupportedProtocols: append([]protocol.ID(nil), internal.DefaultProtocols...),
+		Reuse:              true,
 		Decoder:            &bsmsg.DefaultDecoder{},
 	}
 	for _, opt := range opts {
@@ -90,6 +92,8 @@ type impl struct {
 
 	// inbound messages from the network are forwarded to the receiver
 	receivers []Receiver
+
+	streamReuse bool
 }
 
 type streamMessageSender struct {
@@ -117,6 +121,9 @@ func (s *streamMessageSender) Connect(ctx context.Context) (network.Stream, erro
 	if err != nil {
 		return nil, err
 	}
+	if !s.bsnet.streamReuse {
+		return stream, nil
+	}
 
 	s.stream = stream
 	s.connected = true
@@ -135,11 +142,17 @@ func (s *streamMessageSender) Reset() error {
 
 // Close the stream
 func (s *streamMessageSender) Close() error {
-	return s.stream.Close()
+	if s.stream != nil {
+		return s.stream.Close()
+	}
+	return nil
 }
 
 // Indicates whether the peer supports HAVE / DONT_HAVE messages
 func (s *streamMessageSender) SupportsHave() bool {
+	if s.stream == nil {
+		return true
+	}
 	return s.bsnet.SupportsHave(s.stream.Protocol())
 }
 
@@ -214,6 +227,13 @@ func (s *streamMessageSender) send(ctx context.Context, msg bsmsg.BitSwapMessage
 	if err = s.bsnet.msgToStream(ctx, stream, msg, timeout); err != nil {
 		log.Infof("failed to send message to %s: %s", s.to, err)
 		return err
+	}
+
+	if !s.bsnet.streamReuse {
+		err = stream.Close()
+		if err != nil {
+			log.Warnf("failed to close stream to %s: %s", s.to, err)
+		}
 	}
 
 	return nil

@@ -10,6 +10,7 @@ type NetOpt func(*Settings)
 type Settings struct {
 	ProtocolPrefix     protocol.ID
 	SupportedProtocols []protocol.ID
+	Reuse              bool
 	Decoder            message.Decoder
 }
 
@@ -22,6 +23,12 @@ func Prefix(prefix protocol.ID) NetOpt {
 func SupportedProtocols(protos []protocol.ID) NetOpt {
 	return func(settings *Settings) {
 		settings.SupportedProtocols = protos
+	}
+}
+
+func WithStreamReuse(reuse bool) NetOpt {
+	return func(settings *Settings) {
+		settings.Reuse = reuse
 	}
 }
 
