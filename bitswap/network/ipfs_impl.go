@@ -424,7 +424,12 @@ func (bsnet *impl) Provide(ctx context.Context, k cid.Cid) error {
 
 // handleNewStream receives a new stream from the network.
 func (bsnet *impl) handleNewStream(s network.Stream) {
-	defer s.Close()
+	defer func() {
+		err := s.Close()
+		if err != nil {
+			log.Warnf("error closing stream: %s", err)
+		}
+	}()
 
 	if len(bsnet.receivers) == 0 {
 		_ = s.Reset()
