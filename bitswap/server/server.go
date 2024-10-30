@@ -399,7 +399,7 @@ func (bs *Server) sendBlocks(ctx context.Context, env *decision.Envelope) {
 
 	err := bs.network.SendMessage(ctx, env.Peer, env.Message)
 	if err != nil {
-		log.Debugw("failed to send blocks message",
+		log.Warnw("failed to send blocks message",
 			"peer", env.Peer,
 			"error", err,
 		)
