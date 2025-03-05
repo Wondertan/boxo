@@ -106,7 +106,8 @@ type MessageQueue struct {
 	// Used to track things that happen asynchronously -- used only in test
 	events chan<- messageEvent
 
-	perPeerDelay time.Duration
+	perPeerDelay               time.Duration
+	perPeerRebroadcastDisabled bool
 }
 
 // recallWantlist keeps a list of pending wants and a list of sent wants
@@ -234,8 +235,9 @@ type DontHaveTimeoutManager interface {
 }
 
 type optsConfig struct {
-	dhtConfig    *DontHaveTimeoutConfig
-	perPeerDelay time.Duration
+	dhtConfig                  *DontHaveTimeoutConfig
+	perPeerDelay               time.Duration
+	perPeerRebroadcastDisabled bool
 }
 
 type option func(*optsConfig)
@@ -252,6 +254,12 @@ func WithPerPeerSendDelay(perPeerDelay time.Duration) option {
 			perPeerDelay = defaultPerPeerDelay
 		}
 		cfg.perPeerDelay = perPeerDelay
+	}
+}
+
+func WithPerPeerRebroadcastDisabled(disable bool) option {
+	return func(cfg *optsConfig) {
+		cfg.perPeerRebroadcastDisabled = disable
 	}
 }
 
@@ -277,6 +285,7 @@ func New(ctx context.Context, p peer.ID, network MessageNetwork, onDontHaveTimeo
 	}
 	mq := newMessageQueue(ctx, p, network, maxMessageSize, sendErrorBackoff, maxValidLatency, dhTimeoutMgr, nil, nil)
 	mq.perPeerDelay = opts.perPeerDelay
+	mq.perPeerRebroadcastDisabled = opts.perPeerRebroadcastDisabled
 	return mq
 }
 
@@ -488,14 +497,22 @@ func (mq *MessageQueue) runQueue() {
 	perPeerDelay := mq.perPeerDelay
 	hasWorkChan := mq.outgoingWork
 
-	rebroadcastTimer := mq.clock.Timer(runRebroadcastsInterval)
-	defer rebroadcastTimer.Stop()
+	var rebroadcastCh <-chan time.Time
+	var rebroadcastTimer *clock.Timer
+	if !mq.perPeerRebroadcastDisabled {
+		rebroadcastTimer = mq.clock.Timer(runRebroadcastsInterval)
+		defer rebroadcastTimer.Stop()
+
+		rebroadcastCh = rebroadcastTimer.C
+	}
 
 	for {
 		select {
-		case now := <-rebroadcastTimer.C:
+		case now := <-rebroadcastCh:
 			mq.rebroadcastWantlist(now, rebroadcastInterval)
-			rebroadcastTimer.Reset(runRebroadcastsInterval)
+			if rebroadcastTimer != nil {
+				rebroadcastTimer.Reset(runRebroadcastsInterval)
+			}
 
 		case <-mq.rebroadcastNow:
 			mq.rebroadcastWantlist(mq.clock.Now(), 0)
