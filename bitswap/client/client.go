@@ -206,7 +206,6 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 			bsmq.WithPerPeerRebroadcastDisabled(bs.perPeerRebroadcastDisabled),
 		)
 	}
-	bs.dontHaveTimeoutConfig = nil
 
 	sim := bssim.New()
 	bpm := bsbpm.New()
